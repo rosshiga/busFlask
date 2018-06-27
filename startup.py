@@ -1,10 +1,13 @@
-import sqlite3
-import io
-import requests
-import zipfile
 import csv
+import datetime
+import io
+import sqlite3
+import zipfile
 
-sqlite_file = 'database.sqlite'
+import requests
+
+lastUp = int(datetime.date.today().strftime("%Y%m%d"))
+sqlite_file = 'db.db'
 # Connecting to the database file
 conn = sqlite3.connect(sqlite_file)
 c = conn.cursor()
@@ -27,10 +30,10 @@ with io.StringIO(gtfs.read('routes.txt').decode('ASCII')) as routesCSV:
     c.execute("CREATE UNIQUE INDEX routes_id_uindex ON routes (id)")
     c.execute("CREATE UNIQUE INDEX routes_sign_uindex ON routes (sign)")
     for row in reader:
-        c.execute("INSERT INTO routes VALUES ({id},'{desc}','{sign}')" \
-                  .format(id=row['route_id'], desc=row['route_long_name'], sign=row['route_short_name']))
-    routesCSV.close()
+        c.execute("INSERT INTO routes VALUES (?,?,?)",
+                  (row['route_id'], row['route_long_name'], row['route_short_name']))
     conn.commit()
+    routesCSV.close()
 
 # Stops Logic
 with io.StringIO(gtfs.read('stops.txt').decode('ASCII')) as stopsCSV:
@@ -47,14 +50,75 @@ with io.StringIO(gtfs.read('stops.txt').decode('ASCII')) as stopsCSV:
     c.execute("CREATE UNIQUE INDEX stops_id_uindex ON stops (id)")
     for row in reader:
         c.execute(
-            'INSERT or IGNORE INTO "stops" ("id", "lat", "lon", "name") VALUES ({id},{lat},{lon},"{name}")' \
-            .format(id=row['stop_code'], lat=row['stop_lat'], lon=row['stop_lon'], name=row['stop_name'].title()))
+            'INSERT or IGNORE INTO "stops" ("id", "lat", "lon", "name") VALUES (?,?,?,?)',
+            (row['stop_code'], row['stop_lat'], row['stop_lon'], row['stop_name'].title()))
     conn.commit()
+    stopsCSV.close()
 
-# Creating a second table with 1 column and set it as PRIMARY KEY
-# note that PRIMARY KEY column must consist of unique values!
-# c.execute('CREATE TABLE {tn} ({nf} {ft} PRIMARY KEY)'\
-#        .format(tn=table_name2, nf=new_field, ft=field_type))
+# Calendar Logic
+with io.StringIO(gtfs.read('calendar.txt').decode('ASCII')) as calCSV:
+    reader = csv.DictReader(calCSV)
+    c.execute('DROP TABLE IF EXISTS cal')
+    c.execute("""
+        CREATE TABLE cal
+        (
+            service_id int PRIMARY KEY,
+            days text(7)
+        )""")
+    c.execute("CREATE UNIQUE INDEX cal_service_id_uindex ON cal (service_id)")
+    for row in reader:
+        if int(row['end_date']) < lastUp:
+            c.execute('INSERT into cal VALUES (?,?)',
+                      (row['service_id'], row['operating_days']))
+    conn.commit()
+    calCSV.close()
+
+# Trips Logic
+with io.StringIO(gtfs.read('trips.txt').decode('ASCII')) as tripCSV:
+    reader = csv.DictReader(tripCSV)
+    c.execute('DROP TABLE IF EXISTS trips')
+    c.execute("""  
+              CREATE TABLE trips
+        (
+            id int PRIMARY KEY,
+            service_id int NOT NULL,
+            route_id int,
+            direction boolean,
+            shape_id text,
+            sign text
+        )
+      """)
+    c.execute("CREATE UNIQUE INDEX trips_id_uindex ON trips (id)")
+    for row in reader:
+        c.execute('INSERT into trips VALUES (?,?,?,?,?,?)',
+                  (row["trip_id"], row["service_id"],
+                   row["route_id"], row["direction_id"],
+                   row["shape_id"], row["trip_headsign"].title()))
+    conn.commit()
+    tripCSV.close()
+
+# Times Logic
+with io.StringIO(gtfs.read('stop_times.txt').decode('ASCII')) as timeCSV:
+    reader = csv.DictReader(timeCSV)
+    c.execute('DROP TABLE IF EXISTS times')
+    c.execute("""  
+        CREATE TABLE times
+        (
+            trip_id int,
+            arrival_time time,
+            departure_time time,
+            stop_id int,
+            stop_sequence int,
+            shape_dist_traveled float DEFAULT 0
+        )
+      """)
+    for row in reader:
+        c.execute('INSERT into times VALUES (?,?,?,?,?,?)',
+                  (row["trip_id"], row["arrival_time"],
+                   row["departure_time"], row["stop_id"],
+                   row["stop_sequence"], row["shape_dist_traveled"]))
+    conn.commit()
+    timeCSV.close()
 
 # Committing changes and closing the connection to the database file
 conn.commit()
