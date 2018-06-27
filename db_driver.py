@@ -6,7 +6,7 @@ import zipfile
 import requests
 
 
-def refreshDB(c):
+def refreshdb(c):
     lastUp = int(datetime.date.today().strftime("%Y%m%d"))
 
     gtfsZip = requests.get('http://webapps.thebus.org/transitdata/Production/google_transit.zip')
