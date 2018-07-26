@@ -57,7 +57,7 @@ def searchstop():
 @app.route('/stop')
 def searchtripsbyid():
     query = request.args['id']
-    result = get_db().execute('SELECT  from times where stop_id=?', (query,))
+    result = get_db().execute('SELECT * from times where stop_id=?', (query,))
     result = result.fetchall()
     query = []
     for each in result:
