@@ -65,15 +65,5 @@ def searchtripsbyid():
     return jsonify(query)
 
 
-@app.route('/stop')
-def searchtripsbyid():
-    query = request.args['id']
-    result = get_db().execute('SELECT * from times where stop_id=?', (query,))
-    result = result.fetchall()
-    query = []
-    for each in result:
-        query.append(dict(each))
-    return jsonify(query)
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0')
